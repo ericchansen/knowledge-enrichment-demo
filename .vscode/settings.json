@@ -1,0 +1,63 @@
+{
+  // Python
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.autoImportCompletions": true,
+
+  // Ruff (linting + formatting)
+  "[python]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    }
+  },
+  "ruff.organizeImports": true,
+  "ruff.configurationPreference": "filesystemFirst",
+
+  // Editor conventions
+  "editor.rulers": [88],
+  "editor.tabSize": 4,
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "files.eol": "\n",
+
+  // YAML (2-space indent)
+  "[yaml]": {
+    "editor.tabSize": 2
+  },
+  "[json]": {
+    "editor.tabSize": 2
+  },
+
+  // Azure Functions
+  "azureFunctions.projectLanguage": "Python",
+  "azureFunctions.projectRuntime": "~4",
+  "azureFunctions.pythonVenv": ".venv",
+  "azureFunctions.deploySubpath": "src/functions",
+
+  // Coverage Gutters
+  "coverage-gutters.showLineCoverage": true,
+  "coverage-gutters.showRulerCoverage": true,
+
+  // Todo Tree
+  "todo-tree.general.tags": ["TODO", "FIXME", "BUG", "HACK", "XXX"],
+
+  // Files to exclude from search
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/.ruff_cache": true,
+    "**/*.egg-info": true
+  },
+
+  // Search exclusions
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/.venv": true,
+    "**/uv.lock": true
+  },
+  "snyk.advanced.organization": "0d391bb8-eedd-4638-af92-440bdfa75cee",
+  "snyk.advanced.autoSelectOrganization": true
+}

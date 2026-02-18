@@ -1,0 +1,85 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Azurite",
+      "type": "shell",
+      "command": "azurite --silent --location ${workspaceFolder}/.azurite --debug ${workspaceFolder}/.azurite/debug.log",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Stop Azurite",
+      "type": "shell",
+      "command": "pkill -f azurite || true",
+      "problemMatcher": []
+    },
+    {
+      "label": "func: host start",
+      "type": "func",
+      "command": "host start",
+      "problemMatcher": "$func-python-watch",
+      "isBackground": true,
+      "options": {
+        "cwd": "${workspaceFolder}/src/functions"
+      },
+      "dependsOn": "Start Azurite"
+    },
+    {
+      "label": "Run Tests",
+      "type": "shell",
+      "command": "uv run pytest -v",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Tests with Coverage",
+      "type": "shell",
+      "command": "uv run pytest --cov --cov-report=html --cov-report=term",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Lint (Ruff)",
+      "type": "shell",
+      "command": "uv run ruff check .",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Format (Ruff)",
+      "type": "shell",
+      "command": "uv run ruff format .",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Type Check (Pyright)",
+      "type": "shell",
+      "command": "uv run pyright",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Pre-commit (all files)",
+      "type": "shell",
+      "command": "uv run pre-commit run --all-files",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Install Dependencies",
+      "type": "shell",
+      "command": "uv sync",
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}

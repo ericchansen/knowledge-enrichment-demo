@@ -1,0 +1,37 @@
+{
+  "recommendations": [
+    // Python Core
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "charliermarsh.ruff",
+    "ms-python.debugpy",
+
+    // Azure
+    "ms-azuretools.vscode-azurefunctions",
+    "ms-azuretools.vscode-azurecontainerapps",
+    "ms-azuretools.vscode-azurestorage",
+    "ms-azuretools.vscode-cosmosdb",
+    "ms-azuretools.vscode-bicep",
+    "ms-azuretools.azure-dev",
+
+    // AI & Agent Development
+    "ms-windows-ai-studio.windows-ai-studio",
+
+    // Testing
+    "ryanluker.vscode-coverage-gutters",
+
+    // Security
+    "snyk-security.snyk-vulnerability-scanner",
+
+    // Git & Collaboration
+    "eamodio.gitlens",
+    "Gruntfuggly.todo-tree",
+
+    // Utilities
+    "humao.rest-client",
+    "redhat.vscode-yaml",
+    "ms-azuretools.vscode-docker",
+    "mikestead.dotenv",
+    "editorconfig.editorconfig"
+  ]
+}
