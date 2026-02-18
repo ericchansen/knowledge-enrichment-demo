@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Knowledge Base Enrichment — Content Understanding Demo</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>🔍 Knowledge Base Enrichment</h1>
+        <p class="subtitle">Compare baseline RAG vs. CU-enhanced RAG — side by side</p>
+    </header>
+
+    <main>
+        <!-- Corpus & Pipeline Management -->
+        <details class="corpus-panel" id="corpus-panel">
+            <summary>📁 Corpus &amp; Pipeline Management</summary>
+            <div class="corpus-content">
+                <div class="corpus-row">
+                    <div class="corpus-upload">
+                        <label for="file-upload" class="upload-label">Upload PDFs</label>
+                        <input type="file" id="file-upload" accept=".pdf" multiple>
+                        <button onclick="uploadFiles()">Upload</button>
+                    </div>
+                    <div class="corpus-info">
+                        <span id="corpus-count">0 documents</span>
+                    </div>
+                    <div class="pipeline-actions">
+                        <button onclick="runPipeline('baseline')" id="btn-run-baseline">▶ Run Baseline</button>
+                        <button onclick="runPipeline('enhanced')" id="btn-run-enhanced" class="btn-enhanced">▶ Run Enhanced</button>
+                    </div>
+                </div>
+                <div id="pipeline-status" class="pipeline-status" style="display:none;"></div>
+                <ul id="corpus-list" class="corpus-list"></ul>
+            </div>
+        </details>
+
+        <div class="input-bar">
+            <input type="text" id="query-input"
+                   placeholder="Ask about GAO cybersecurity reports…"
+                   autocomplete="off">
+            <button id="send-btn" onclick="sendQuery()">Compare</button>
+        </div>
+
+        <div id="sample-questions" class="sample-questions">
+            <span class="label">Try:</span>
+            <button class="sample" onclick="askSample(this)">What are the main cybersecurity challenges facing federal agencies?</button>
+            <button class="sample" onclick="askSample(this)">Which agencies have the most recommendations?</button>
+            <button class="sample" onclick="askSample(this)">What did GAO find about legacy IT systems?</button>
+        </div>
+
+        <div class="panels">
+            <section class="panel baseline">
+                <div class="panel-header">
+                    <h2>📄 Baseline RAG</h2>
+                    <span class="tag">Plain text chunks only</span>
+                </div>
+                <div class="chat-area" id="baseline-chat">
+                    <div class="placeholder">Responses will appear here…</div>
+                </div>
+                <div class="metrics" id="baseline-metrics"></div>
+            </section>
+
+            <section class="panel enhanced">
+                <div class="panel-header">
+                    <h2>✨ CU-Enhanced RAG</h2>
+                    <span class="tag accent">+ Metadata &amp; structure</span>
+                </div>
+                <div class="chat-area" id="enhanced-chat">
+                    <div class="placeholder">Responses will appear here…</div>
+                </div>
+                <div class="metrics" id="enhanced-metrics"></div>
+            </section>
+        </div>
+
+        <section class="stats-bar" id="stats-bar" style="display:none;">
+            <div class="stat">
+                <span class="stat-label">Baseline citations</span>
+                <span class="stat-value" id="stat-baseline-citations">0</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Enhanced citations</span>
+                <span class="stat-value" id="stat-enhanced-citations">0</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Response time (baseline)</span>
+                <span class="stat-value" id="stat-baseline-time">—</span>
+            </div>
+            <div class="stat">
+                <span class="stat-label">Response time (enhanced)</span>
+                <span class="stat-value" id="stat-enhanced-time">—</span>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Powered by <strong>Azure AI Content Understanding</strong> · Knowledge Base Overnight Enrichment Demo</p>
+    </footer>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

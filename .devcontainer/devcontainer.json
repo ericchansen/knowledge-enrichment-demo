@@ -1,0 +1,71 @@
+{
+  "name": "ifwebuildit - Python Azure AI Dev",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/azure-cli:1": {},
+    "ghcr.io/azure/azure-dev/azd:0": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "ms-python.debugpy",
+        "ms-azuretools.vscode-azurecontainerapps",
+        "ms-azuretools.vscode-azurestorage",
+        "ms-azuretools.vscode-bicep",
+        "ms-azuretools.azure-dev",
+        "ryanluker.vscode-coverage-gutters",
+        "snyk-security.snyk-vulnerability-scanner",
+        "eamodio.gitlens",
+        "Gruntfuggly.todo-tree",
+        "humao.rest-client",
+        "redhat.vscode-yaml",
+        "ms-azuretools.vscode-docker",
+        "mikestead.dotenv",
+        "editorconfig.editorconfig",
+        "bierner.markdown-mermaid"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+        "[python]": {
+          "editor.formatOnSave": true,
+          "editor.defaultFormatter": "charliermarsh.ruff",
+          "editor.codeActionsOnSave": {
+            "source.fixAll": "explicit",
+            "source.organizeImports": "explicit"
+          }
+        },
+        "python.analysis.typeCheckingMode": "basic",
+        "ruff.organizeImports": true,
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true,
+        "editor.rulers": [88]
+      }
+    }
+  },
+  "forwardPorts": [8080, 10000, 10001, 10002],
+  "portsAttributes": {
+    "8080": { "label": "API Server" },
+    "10000": { "label": "Azurite Blob" },
+    "10001": { "label": "Azurite Queue" },
+    "10002": { "label": "Azurite Table" }
+  },
+  "postCreateCommand": "npm install -g azurite && uv sync && uv run pre-commit install",
+  "remoteEnv": {
+    "AZURE_TENANT_ID": "${localEnv:AZURE_TENANT_ID}",
+    "AZURE_SUBSCRIPTION_ID": "${localEnv:AZURE_SUBSCRIPTION_ID}"
+  },
+  "containerEnv": {
+    "UV_LINK_MODE": "copy"
+  }
+}
