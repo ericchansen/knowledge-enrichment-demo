@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     # Azure Storage
     azure_storage_connection_string: str = "UseDevelopmentStorage=true"
+    storage_account_url: str = ""
     storage_container_corpus: str = "corpus"
     storage_container_results: str = "cu-results"
 

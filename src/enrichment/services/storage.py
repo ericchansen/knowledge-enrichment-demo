@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 from typing import BinaryIO
 
-from azure.storage.blob import BlobServiceClient, ContainerClient
+from azure.storage.blob import (
+    BlobSasPermissions,
+    BlobServiceClient,
+    ContainerClient,
+    generate_blob_sas,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +21,27 @@ class StorageService:
 
     def __init__(
         self,
-        connection_string: str,
+        connection_string: str = "",
         corpus_container: str = "corpus",
         results_container: str = "cu-results",
+        *,
+        account_url: str = "",
     ) -> None:
-        self._blob_service = BlobServiceClient.from_connection_string(connection_string)
+        if account_url:
+            from azure.identity import DefaultAzureCredential
+
+            self._credential = DefaultAzureCredential()
+            self._blob_service = BlobServiceClient(
+                account_url=account_url,
+                credential=self._credential,
+            )
+            self._uses_identity = True
+        else:
+            self._credential = None
+            self._blob_service = BlobServiceClient.from_connection_string(
+                connection_string
+            )
+            self._uses_identity = False
         self._corpus_container_name = corpus_container
         self._results_container_name = results_container
 
@@ -61,6 +83,31 @@ class StorageService:
         """Get the URL for a document in the corpus."""
         blob = self.corpus_container.get_blob_client(filename)
         return blob.url
+
+    def get_document_sas_url(self, filename: str, expiry_hours: int = 1) -> str:
+        """Get a SAS-signed URL for a document (for external service access).
+
+        Uses user delegation SAS when connected via DefaultAzureCredential,
+        or falls back to the plain blob URL for connection-string auth.
+        """
+        blob = self.corpus_container.get_blob_client(filename)
+        if not self._uses_identity:
+            return blob.url
+
+        now = dt.datetime.now(dt.UTC)
+        udk = self._blob_service.get_user_delegation_key(
+            key_start_time=now - dt.timedelta(minutes=5),
+            key_expiry_time=now + dt.timedelta(hours=expiry_hours),
+        )
+        sas = generate_blob_sas(
+            account_name=self._blob_service.account_name,
+            container_name=self._corpus_container_name,
+            blob_name=filename,
+            user_delegation_key=udk,
+            permission=BlobSasPermissions(read=True),
+            expiry=now + dt.timedelta(hours=expiry_hours),
+        )
+        return f"{blob.url}?{sas}"
 
     def download_document(self, filename: str) -> bytes:
         """Download a document from the corpus container."""

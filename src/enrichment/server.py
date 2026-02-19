@@ -52,11 +52,15 @@ def create_app() -> FastAPI:
     )
 
     # Initialize services
-    storage = StorageService(
-        connection_string=settings.azure_storage_connection_string,
-        corpus_container=settings.storage_container_corpus,
-        results_container=settings.storage_container_results,
-    )
+    storage_kwargs: dict[str, str] = {
+        "corpus_container": settings.storage_container_corpus,
+        "results_container": settings.storage_container_results,
+    }
+    if settings.storage_account_url:
+        storage_kwargs["account_url"] = settings.storage_account_url
+    else:
+        storage_kwargs["connection_string"] = settings.azure_storage_connection_string
+    storage = StorageService(**storage_kwargs)
 
     # Chat service (lazy — only initialised when Azure OpenAI is configured)
     _chat_service: ChatService | None = None
@@ -223,7 +227,7 @@ def create_app() -> FastAPI:
                 )
                 pipeline.ensure_index()
                 for fname in filenames:
-                    blob_url = storage.get_document_url(fname)
+                    blob_url = storage.get_document_sas_url(fname)
                     doc_id = Path(fname).stem
                     pipeline.process_document(document_url=blob_url, document_id=doc_id)
                     processed += 1
@@ -240,7 +244,7 @@ def create_app() -> FastAPI:
                 pipeline.ensure_index()
                 pipeline.ensure_analyzer()
                 for fname in filenames:
-                    blob_url = storage.get_document_url(fname)
+                    blob_url = storage.get_document_sas_url(fname)
                     doc_id = Path(fname).stem
                     pipeline.process_document(document_url=blob_url, document_id=doc_id)
                     processed += 1

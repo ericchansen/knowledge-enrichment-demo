@@ -16,7 +16,11 @@ logger = logging.getLogger(__name__)
 # Custom analyzer schema for GAO reports
 GAO_ANALYZER_SCHEMA: dict[str, Any] = {
     "description": "GAO Report Analyzer — extracts structured fields for RAG enrichment",
-    "scenario": "document",
+    "baseAnalyzerId": "prebuilt-document",
+    "models": {
+        "completion": "gpt-4.1",
+        "embedding": "text-embedding-3-large",
+    },
     "fieldSchema": {
         "fields": {
             "reportTitle": {"type": "string", "method": "extract"},
@@ -96,7 +100,7 @@ class ContentUnderstandingService:
         Returns the analyzer definition.
         """
         body = schema or GAO_ANALYZER_SCHEMA
-        poller = self._client.begin_create_analyzer(analyzer_id, body=body)
+        poller = self._client.begin_create_analyzer(analyzer_id, resource=body)
         result = poller.result()
         logger.info("Created analyzer: %s", analyzer_id)
         return dict(result) if result else {"analyzerId": analyzer_id}
@@ -144,7 +148,7 @@ class ContentUnderstandingService:
     def analyze_document_enhanced(
         self,
         document_url: str,
-        analyzer_id: str = "gao-report-analyzer",
+        analyzer_id: str = "gaoReportAnalyzer",
     ) -> AnalyzeResult:
         """Analyze a document using the custom GAO analyzer (enhanced pipeline)."""
         return self.analyze_document(analyzer_id, document_url)
@@ -159,15 +163,26 @@ class ContentUnderstandingService:
                 "kind": str(content.kind) if content.kind else None,
             }
             if hasattr(content, "fields") and content.fields:
-                entry["fields"] = {
-                    k: {"value": v.value, "confidence": v.confidence}
-                    for k, v in content.fields.items()
-                    if v is not None
-                }
+                entry["fields"] = {}
+                for k, v in content.fields.items():
+                    if v is None:
+                        continue
+                    val = v.value
+                    # Recursively convert SDK types to plain Python
+                    if isinstance(val, list):
+                        val = [
+                            item.value if hasattr(item, "value") else item
+                            for item in val
+                        ]
+                    elif hasattr(val, "value"):
+                        val = val.value
+                    entry["fields"][k] = {
+                        "value": val,
+                        "confidence": v.confidence,
+                    }
             contents.append(entry)
         return {
             "analyzerId": result.analyzer_id,
-            "status": str(result.status),
             "contents": contents,
         }
 

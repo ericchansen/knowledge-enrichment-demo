@@ -18,15 +18,31 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _to_plain(value: Any) -> Any:
+    """Recursively convert SDK field objects to plain Python types."""
+    if value is None:
+        return value
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, list):
+        return [_to_plain(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _to_plain(v) for k, v in value.items()}
+    # SDK field objects (StringField, etc.) expose .value
+    if hasattr(value, "value"):
+        return _to_plain(value.value)
+    return str(value)
+
+
 def _extract_fields(cu_result_dict: dict[str, Any]) -> dict[str, Any]:
     """Extract CU field values from the analysis result dict."""
     fields: dict[str, Any] = {}
     for content in cu_result_dict.get("contents", []):
         for name, field_data in content.get("fields", {}).items():
             if isinstance(field_data, dict):
-                fields[name] = field_data.get("value", "")
+                fields[name] = _to_plain(field_data.get("value", ""))
             else:
-                fields[name] = field_data
+                fields[name] = _to_plain(field_data)
     return fields
 
 
@@ -47,7 +63,7 @@ class EnhancedPipeline:
         embedding: EmbeddingService,
         search: SearchService,
         index_name: str = "enhanced",
-        analyzer_id: str = "gao-report-analyzer",
+        analyzer_id: str = "gaoReportAnalyzer",
     ) -> None:
         self.storage = storage
         self.cu = cu
