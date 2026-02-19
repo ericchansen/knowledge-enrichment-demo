@@ -10,8 +10,29 @@ from enrichment.server import create_app
 
 @pytest.fixture
 def client():
-    """Create a test client with mocked storage."""
-    with patch("enrichment.server.StorageService") as mock_storage_class:
+    """Create a test client with mocked storage and empty settings."""
+    with (
+        patch("enrichment.server.StorageService") as mock_storage_class,
+        patch("enrichment.server.get_settings") as mock_settings,
+    ):
+        settings = MagicMock()
+        settings.azure_openai_endpoint = ""
+        settings.azure_openai_key = ""
+        settings.search_endpoint = ""
+        settings.search_api_key = ""
+        settings.contentunderstanding_endpoint = ""
+        settings.contentunderstanding_key = ""
+        settings.embedding_deployment = "text-embedding-3-small"
+        settings.chat_deployment = "gpt-4o"
+        settings.search_index_baseline = "baseline-index"
+        settings.search_index_enhanced = "enhanced-index"
+        settings.azure_storage_connection_string = "UseDevelopmentStorage=true"
+        settings.storage_account_url = ""
+        settings.storage_container_corpus = "corpus"
+        settings.storage_container_results = "cu-results"
+        settings.environment = "test"
+        settings.log_level = "INFO"
+        mock_settings.return_value = settings
         mock_storage = mock_storage_class.return_value
         mock_storage.list_documents.return_value = []
         app = create_app()
@@ -144,6 +165,7 @@ def test_chat_baseline_with_service():
         settings.search_index_baseline = "baseline-index"
         settings.search_index_enhanced = "enhanced-index"
         settings.azure_storage_connection_string = "UseDevelopmentStorage=true"
+        settings.storage_account_url = ""
         settings.storage_container_corpus = "corpus"
         settings.storage_container_results = "cu-results"
         settings.environment = "test"
@@ -188,6 +210,7 @@ def test_chat_baseline_error_handling():
         settings.search_index_baseline = "baseline-index"
         settings.search_index_enhanced = "enhanced-index"
         settings.azure_storage_connection_string = "UseDevelopmentStorage=true"
+        settings.storage_account_url = ""
         settings.storage_container_corpus = "corpus"
         settings.storage_container_results = "cu-results"
         settings.environment = "test"

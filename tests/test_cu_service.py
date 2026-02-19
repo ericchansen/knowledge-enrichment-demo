@@ -43,7 +43,7 @@ def test_create_analyzer_uses_gao_schema_by_default(mock_cred, mock_client_class
     result = svc.create_analyzer("test-analyzer")
 
     mock_client.begin_create_analyzer.assert_called_once_with(
-        "test-analyzer", body=GAO_ANALYZER_SCHEMA
+        "test-analyzer", resource=GAO_ANALYZER_SCHEMA
     )
     assert result == {"analyzerId": "test-analyzer"}
 
@@ -99,7 +99,7 @@ def test_analyze_document_enhanced(mock_cred, mock_client_class):
     svc.analyze_document_enhanced("https://storage/test.pdf")
 
     call_args = mock_client.begin_analyze.call_args
-    assert call_args.kwargs["analyzer_id"] == "gao-report-analyzer"
+    assert call_args.kwargs["analyzer_id"] == "gaoReportAnalyzer"
 
 
 @patch("enrichment.services.content_understanding.ContentUnderstandingClient")

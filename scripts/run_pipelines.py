@@ -31,6 +31,7 @@ from enrichment.services.search import SearchService  # noqa: E402
 from enrichment.services.storage import StorageService  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
+logging.getLogger("azure").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
@@ -77,19 +78,24 @@ def main() -> None:
         endpoint=settings.search_endpoint,
         credential=settings.search_api_key,
     )
-    storage = StorageService(
-        connection_string=settings.azure_storage_connection_string,
-        corpus_container=settings.storage_container_corpus,
-        results_container=settings.storage_container_results,
-    )
+    storage_kwargs: dict[str, str] = {
+        "corpus_container": settings.storage_container_corpus,
+        "results_container": settings.storage_container_results,
+    }
+    if settings.storage_account_url:
+        storage_kwargs["account_url"] = settings.storage_account_url
+    else:
+        storage_kwargs["connection_string"] = settings.azure_storage_connection_string
+    storage = StorageService(**storage_kwargs)
 
-    # Upload PDFs to blob storage and collect URLs
+    # Upload PDFs to blob storage and collect SAS URLs (for CU access)
     doc_urls: list[tuple[str, str]] = []
     for pdf in pdfs:
         logger.info("Uploading %s …", pdf.name)
-        blob_url = storage.upload_document(pdf.name, pdf.read_bytes())
+        storage.upload_document(pdf.name, pdf.read_bytes())
         doc_id = pdf.stem
-        doc_urls.append((doc_id, blob_url))
+        sas_url = storage.get_document_sas_url(pdf.name)
+        doc_urls.append((doc_id, sas_url))
 
     # Run baseline pipeline
     if args.pipeline in ("baseline", "both"):
