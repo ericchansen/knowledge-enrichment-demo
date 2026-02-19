@@ -17,15 +17,18 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT_BASELINE = """You are a helpful assistant that answers questions about GAO (Government Accountability Office) cybersecurity reports.
 Use ONLY the provided context to answer. If the context doesn't contain relevant information, say so.
-Cite the document ID when referencing specific information."""
+Keep your answer to 2-3 short paragraphs. Cite the document ID in brackets like [GAO-24-107231] when referencing information."""
 
 SYSTEM_PROMPT_ENHANCED = """You are a helpful assistant that answers questions about GAO cybersecurity reports.
-You have access to enriched document metadata including report titles, agencies, topic categories, and executive summaries.
-Use ONLY the provided context to answer. When available, include:
-- The specific report number and title
-- Relevant agencies mentioned
-- Key findings or recommendations
-Cite the document ID when referencing specific information."""
+You have access to enriched metadata: report titles, agencies, topic categories, findings, and recommendations.
+
+Rules:
+- Use ONLY the provided context. Be concise — 3-5 bullet points max.
+- Start each bullet with the specific finding or fact, not filler.
+- Cite using the full report title and number, e.g. [GAO-24-107231, "High-Risk Series..."].
+- When agencies are mentioned, name them specifically.
+- End with a one-sentence takeaway.
+- Do NOT repeat the question or use filler phrases like "According to the reports..."."""
 
 
 class ChatService:
@@ -115,6 +118,11 @@ class ChatService:
                     "snippet": content[:200],
                     "report_title": r.get("report_title", ""),
                     "report_number": r.get("report_number", ""),
+                    "agencies": r.get("agencies", []),
+                    "topic_category": r.get("topic_category", ""),
+                    "executive_summary": r.get("executive_summary", ""),
+                    "key_findings": r.get("key_findings", []),
+                    "recommendations": r.get("recommendations", []),
                 }
             )
 
@@ -135,7 +143,36 @@ class ChatService:
         )
 
         answer = response.choices[0].message.content or ""
-        return {"message": answer, "citations": citations}
+
+        # Aggregate metadata across citations
+        all_agencies: list[str] = []
+        all_topics: list[str] = []
+        reports: list[dict[str, str]] = []
+        seen_reports: set[str] = set()
+        has_summary = False
+
+        for c in citations:
+            for a in c.get("agencies", []):
+                if a and a not in all_agencies:
+                    all_agencies.append(a)
+            topic = c.get("topic_category", "")
+            if topic and topic not in all_topics:
+                all_topics.append(topic)
+            if c.get("executive_summary"):
+                has_summary = True
+            rn = c.get("report_number", "")
+            if rn and rn not in seen_reports:
+                seen_reports.add(rn)
+                reports.append({"title": c.get("report_title", ""), "number": rn})
+
+        metadata = {
+            "reports": reports,
+            "agencies": all_agencies,
+            "topics": all_topics,
+            "has_executive_summary": has_summary,
+        }
+
+        return {"message": answer, "citations": citations, "metadata": metadata}
 
     def chat_baseline(self, message: str, index_name: str) -> dict[str, Any]:
         """Chat using the baseline index."""

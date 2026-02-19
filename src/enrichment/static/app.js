@@ -7,7 +7,6 @@ const enhancedChat = document.getElementById("enhanced-chat");
 const queryInput = document.getElementById("query-input");
 const sendBtn = document.getElementById("send-btn");
 
-// Enter key sends query
 queryInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !sendBtn.disabled) sendQuery();
 });
@@ -17,21 +16,44 @@ function askSample(btn) {
     sendQuery();
 }
 
+// ── Lightweight Markdown → HTML ─────────────────────────────
+
+function md(text) {
+    if (!text) return "";
+    let html = text
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        // Bold
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+        // Italic
+        .replace(/\*(.+?)\*/g, "<em>$1</em>")
+        // Headings (### h3, ## h2)
+        .replace(/^### (.+)$/gm, '<h4 class="md-h4">$1</h4>')
+        .replace(/^## (.+)$/gm, '<h3 class="md-h3">$1</h3>')
+        // Unordered lists
+        .replace(/^[-•] (.+)$/gm, '<li>$1</li>')
+        // Ordered lists
+        .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+        // Wrap consecutive <li> in <ul>
+        .replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul class="md-list">$1</ul>')
+        // Line breaks (double newline = paragraph break)
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n/g, '<br>');
+    return `<p>${html}</p>`;
+}
+
+// ── Chat Flow ───────────────────────────────────────────────
+
 async function sendQuery() {
     const message = queryInput.value.trim();
     if (!message) return;
 
     sendBtn.disabled = true;
     queryInput.value = "";
-
-    // Clear placeholders
     clearPlaceholders();
 
-    // Add user messages to both panels
     appendMessage(baselineChat, message, "user");
     appendMessage(enhancedChat, message, "user");
 
-    // Show loading indicators
     const baselineLoading = appendLoading(baselineChat);
     const enhancedLoading = appendLoading(enhancedChat);
 
@@ -39,7 +61,6 @@ async function sendQuery() {
         const startBaseline = performance.now();
         const startEnhanced = performance.now();
 
-        // Fire both requests in parallel
         const [baselineRes, enhancedRes] = await Promise.all([
             fetchChat("/api/chat/baseline", message),
             fetchChat("/api/chat/enhanced", message),
@@ -48,15 +69,12 @@ async function sendQuery() {
         const baselineTime = performance.now() - startBaseline;
         const enhancedTime = performance.now() - startEnhanced;
 
-        // Remove loading indicators
         baselineLoading.remove();
         enhancedLoading.remove();
 
-        // Display results
         appendAssistantMessage(baselineChat, baselineRes, false);
         appendAssistantMessage(enhancedChat, enhancedRes, true);
 
-        // Update stats
         updateStats(baselineRes, enhancedRes, baselineTime, enhancedTime);
 
     } catch (err) {
@@ -82,6 +100,8 @@ async function fetchChat(endpoint, message) {
     }
     return response.json();
 }
+
+// ── Message Rendering ───────────────────────────────────────
 
 function clearPlaceholders() {
     baselineChat.querySelectorAll(".placeholder").forEach((el) => el.remove());
@@ -110,25 +130,69 @@ function appendAssistantMessage(container, data, isEnhanced) {
     const div = document.createElement("div");
     div.className = `msg assistant${isEnhanced ? " enhanced-msg" : ""}`;
 
-    // Message text
-    const textP = document.createElement("p");
-    textP.textContent = data.message || "No response";
-    div.appendChild(textP);
+    // Metadata card (enhanced only, when metadata exists)
+    const meta = data.metadata || {};
+    if (isEnhanced && meta.reports && meta.reports.length > 0) {
+        const card = document.createElement("div");
+        card.className = "metadata-card";
+
+        // Reports
+        const reportsHtml = meta.reports.map(r =>
+            `<div class="meta-report"><span class="meta-number">${esc(r.number)}</span> ${esc(r.title)}</div>`
+        ).join("");
+
+        // Agencies
+        const agenciesHtml = (meta.agencies || []).map(a =>
+            `<span class="meta-tag agency-tag">${esc(a)}</span>`
+        ).join("");
+
+        // Topics
+        const topicsHtml = (meta.topics || []).map(t =>
+            `<span class="meta-tag topic-tag">${esc(t)}</span>`
+        ).join("");
+
+        let inner = `<div class="meta-label">📊 Source Intelligence</div>`;
+        inner += `<div class="meta-reports">${reportsHtml}</div>`;
+        if (agenciesHtml) inner += `<div class="meta-section"><span class="meta-section-label">Agencies:</span> ${agenciesHtml}</div>`;
+        if (topicsHtml) inner += `<div class="meta-section"><span class="meta-section-label">Topics:</span> ${topicsHtml}</div>`;
+
+        card.innerHTML = inner;
+        div.appendChild(card);
+    }
+
+    // Message body (rendered markdown)
+    const bodyDiv = document.createElement("div");
+    bodyDiv.className = "msg-body";
+    bodyDiv.innerHTML = md(data.message || "No response");
+    div.appendChild(bodyDiv);
 
     // Citations
     if (data.citations && data.citations.length > 0) {
         const citDiv = document.createElement("div");
         citDiv.className = "citations";
-        citDiv.innerHTML = `<strong>Citations (${data.citations.length}):</strong> ` +
-            data.citations
-                .map((c) => {
-                    if (c.report_title && c.report_number) {
-                        return `${c.report_title} (${c.report_number})`;
-                    }
-                    return c.document_id;
-                })
-                .filter((v, i, a) => a.indexOf(v) === i)  // unique
-                .join(", ");
+
+        if (isEnhanced) {
+            // Rich citation cards
+            const unique = dedupeByReport(data.citations);
+            citDiv.innerHTML = `<div class="cit-label">📎 Sources (${unique.length})</div>` +
+                unique.map(c => {
+                    const pct = Math.round((c.score || 0) * 100 * 30); // scale for visual
+                    const barW = Math.min(Math.max(pct, 8), 100);
+                    return `<div class="cit-card">
+                        <div class="cit-header">
+                            <span class="cit-number">${esc(c.report_number || c.document_id)}</span>
+                            <span class="cit-title">${esc(c.report_title || "")}</span>
+                        </div>
+                        <div class="cit-score-bar"><div class="cit-score-fill" style="width:${barW}%"></div></div>
+                        <div class="cit-snippet">${esc(c.snippet || "")}</div>
+                    </div>`;
+                }).join("");
+        } else {
+            // Simple baseline citations — just doc IDs
+            const ids = [...new Set(data.citations.map(c => c.document_id))];
+            citDiv.innerHTML = `<div class="cit-label">📎 Sources (${ids.length})</div>` +
+                ids.map(id => `<span class="cit-id">${esc(id)}</span>`).join(" ");
+        }
         div.appendChild(citDiv);
     }
 
@@ -136,16 +200,49 @@ function appendAssistantMessage(container, data, isEnhanced) {
     container.scrollTop = container.scrollHeight;
 }
 
+function dedupeByReport(citations) {
+    const seen = new Set();
+    return citations.filter(c => {
+        const key = c.report_number || c.document_id;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
+function esc(s) {
+    const el = document.createElement("span");
+    el.textContent = s || "";
+    return el.innerHTML;
+}
+
+// ── Stats Bar ───────────────────────────────────────────────
+
 function updateStats(baselineRes, enhancedRes, baselineTime, enhancedTime) {
     document.getElementById("stats-bar").style.display = "flex";
-    document.getElementById("stat-baseline-citations").textContent =
-        (baselineRes.citations || []).length;
-    document.getElementById("stat-enhanced-citations").textContent =
-        (enhancedRes.citations || []).length;
-    document.getElementById("stat-baseline-time").textContent =
-        `${(baselineTime / 1000).toFixed(1)}s`;
-    document.getElementById("stat-enhanced-time").textContent =
-        `${(enhancedTime / 1000).toFixed(1)}s`;
+
+    const bMeta = baselineRes.metadata || {};
+    const eMeta = enhancedRes.metadata || {};
+
+    const bReports = (bMeta.reports || []).length;
+    const eReports = (eMeta.reports || []).length;
+    const bAgencies = (bMeta.agencies || []).length;
+    const eAgencies = (eMeta.agencies || []).length;
+
+    setStat("stat-baseline-reports", bReports, false);
+    setStat("stat-enhanced-reports", eReports, eReports > bReports);
+    setStat("stat-baseline-agencies", bAgencies, false);
+    setStat("stat-enhanced-agencies", eAgencies, eAgencies > bAgencies);
+    setStat("stat-baseline-titles", bMeta.reports?.some(r => r.title) ? "✓" : "✗", false);
+    setStat("stat-enhanced-titles", eMeta.reports?.some(r => r.title) ? "✓" : "✗", eMeta.reports?.some(r => r.title));
+    document.getElementById("stat-baseline-time").textContent = `${(baselineTime / 1000).toFixed(1)}s`;
+    document.getElementById("stat-enhanced-time").textContent = `${(enhancedTime / 1000).toFixed(1)}s`;
+}
+
+function setStat(id, value, highlight) {
+    const el = document.getElementById(id);
+    el.textContent = value;
+    el.className = `stat-value${highlight ? " stat-winner" : ""}`;
 }
 
 // ── Corpus & Pipeline management ──────────────────────────
@@ -227,5 +324,4 @@ async function runPipeline(type) {
     }
 }
 
-// Load corpus on page load
 loadCorpus();

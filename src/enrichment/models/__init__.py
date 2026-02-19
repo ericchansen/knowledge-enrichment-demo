@@ -76,6 +76,7 @@ class ChatResponse(BaseModel):
     message: str
     pipeline_type: PipelineType
     citations: list[dict[str, Any]] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class PipelineRequest(BaseModel):
