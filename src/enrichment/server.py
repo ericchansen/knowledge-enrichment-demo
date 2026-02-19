@@ -145,6 +145,7 @@ def create_app() -> FastAPI:
             message=result["message"],
             pipeline_type=PipelineType.BASELINE,
             citations=result.get("citations", []),
+            metadata=result.get("metadata", {}),
         )
 
     @app.post("/api/chat/enhanced", response_model=ChatResponse)
@@ -170,6 +171,7 @@ def create_app() -> FastAPI:
             message=result["message"],
             pipeline_type=PipelineType.ENHANCED,
             citations=result.get("citations", []),
+            metadata=result.get("metadata", {}),
         )
 
     @app.post("/api/pipeline/run", response_model=PipelineStatus)
