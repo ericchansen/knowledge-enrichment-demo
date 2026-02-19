@@ -16,12 +16,9 @@ env:
   ENVIRONMENT: prod
 
 jobs:
-  build-and-push:
-    name: Build & Push Image
+  deploy:
+    name: Deploy Prod
     runs-on: ubuntu-latest
-    outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
-      image-ref: ${{ steps.ref.outputs.image-ref }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,11 +29,21 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Ensure infrastructure (ACR, Search, Storage, ACA env)
+        uses: azure/arm-deploy@v2
+        with:
+          resourceGroupName: ${{ env.AZURE_RESOURCE_GROUP }}
+          template: infra/main.bicep
+          parameters: >-
+            environmentName=${{ env.ENVIRONMENT }}
+            acrName=${{ env.ACR_NAME }}
+          failOnStdErr: false
+
       - name: ACR Login
         run: az acr login --name ${{ env.ACR_NAME }}
 
       - name: Build & Push
-        id: ref
+        id: image
         run: |
           IMAGE_TAG=sha-${GITHUB_SHA::8}
           IMAGE_REF=${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${IMAGE_TAG}
@@ -44,23 +51,7 @@ jobs:
           docker push ${IMAGE_REF}
           echo "image-ref=${IMAGE_REF}" >> "$GITHUB_OUTPUT"
 
-  deploy-infra:
-    name: Deploy Infrastructure
-    runs-on: ubuntu-latest
-    needs: build-and-push
-    outputs:
-      app-url: ${{ steps.deploy.outputs.appUrl }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Deploy Bicep
+      - name: Deploy app with image
         id: deploy
         uses: azure/arm-deploy@v2
         with:
@@ -69,7 +60,7 @@ jobs:
           parameters: >-
             environmentName=${{ env.ENVIRONMENT }}
             acrName=${{ env.ACR_NAME }}
-            containerImage=${{ needs.build-and-push.outputs.image-ref }}
+            containerImage=${{ steps.image.outputs.image-ref }}
           failOnStdErr: false
 
       - name: Show App URL

@@ -30,6 +30,16 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Ensure infrastructure (ACR, Search, Storage, ACA env)
+        uses: azure/arm-deploy@v2
+        with:
+          resourceGroupName: ${{ env.AZURE_RESOURCE_GROUP }}
+          template: infra/main.bicep
+          parameters: >-
+            environmentName=stage
+            acrName=${{ env.ACR_NAME }}
+          failOnStdErr: false
+
       - name: ACR Login
         run: az acr login --name ${{ env.ACR_NAME }}
 
@@ -42,7 +52,7 @@ jobs:
           docker push ${IMAGE_REF}
           echo "image-ref=${IMAGE_REF}" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy Bicep (stage)
+      - name: Deploy app with image
         id: deploy
         uses: azure/arm-deploy@v2
         with:
@@ -68,7 +78,6 @@ jobs:
 
             _Deployed from commit \`${context.sha.substring(0, 8)}\`_`;
 
-            // Find existing bot comment to update
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
