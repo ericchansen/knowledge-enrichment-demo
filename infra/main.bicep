@@ -3,7 +3,8 @@
 //
 // Shared resources (deploy once):  ACR
 // Per-environment resources:       Container Apps Env, Container App,
-//                                  AI Search, Storage Account
+//                                  AI Search, Storage Account,
+//                                  User-assigned Managed Identity + RBAC
 //
 // Existing resources (referenced): AI Services (dev-beme-ai),
 //                                  Log Analytics (dev-beme-logs)
@@ -45,6 +46,7 @@ var searchName = 'beme-search${envSuffix}'
 var storageName = 'bemestorage${replace(environmentName, '-', '')}'
 var appEnvName = 'beme-cae${envSuffix}'
 var appName = 'beme-enrichment${envSuffix}'
+var identityName = 'beme-id${envSuffix}'
 
 // Well-known role definition GUIDs
 var storageBlobDataContributorRole = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
@@ -70,6 +72,49 @@ module acr 'modules/acr.bicep' = {
     name: acrName
     location: location
     tags: tags
+  }
+}
+
+// ── Per-Environment: User-Assigned Managed Identity ─────────────────────────
+// Created BEFORE the Container App so we can assign AcrPull first.
+
+resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: identityName
+  location: location
+  tags: union(tags, { environment: environmentName })
+}
+
+// ── Role Assignments (user-assigned MI — created before Container App) ──────
+
+module roleStorage 'modules/role-assignment.bicep' = {
+  name: 'role-storage-${environmentName}'
+  params: {
+    principalId: identity.properties.principalId
+    roleDefinitionId: storageBlobDataContributorRole
+  }
+}
+
+module roleCognitive 'modules/role-assignment.bicep' = {
+  name: 'role-cognitive-${environmentName}'
+  params: {
+    principalId: identity.properties.principalId
+    roleDefinitionId: cognitiveServicesUserRole
+  }
+}
+
+module roleSearch 'modules/role-assignment.bicep' = {
+  name: 'role-search-${environmentName}'
+  params: {
+    principalId: identity.properties.principalId
+    roleDefinitionId: searchServiceContributorRole
+  }
+}
+
+module roleAcrPull 'modules/role-assignment.bicep' = {
+  name: 'role-acr-pull-${environmentName}'
+  params: {
+    principalId: identity.properties.principalId
+    roleDefinitionId: acrPullRole
   }
 }
 
@@ -109,12 +154,14 @@ module appEnv 'modules/container-app-env.bicep' = {
 
 module app 'modules/container-app.bicep' = if (!empty(containerImage)) {
   name: 'app-${environmentName}'
+  dependsOn: [roleAcrPull]
   params: {
     name: appName
     location: location
     environmentId: appEnv.outputs.environmentId
     containerImage: containerImage
     acrLoginServer: acr.outputs.acrLoginServer
+    userAssignedIdentityId: identity.id
     tags: union(tags, { environment: environmentName })
     minReplicas: environmentName == 'prod' ? 1 : 0
     maxReplicas: environmentName == 'prod' ? 3 : 1
@@ -137,46 +184,6 @@ module app 'modules/container-app.bicep' = if (!empty(containerImage)) {
       { name: 'SEARCH_INDEX_ENHANCED', value: 'enhanced-index' }
       { name: 'LOG_LEVEL', value: environmentName == 'prod' ? 'INFO' : 'DEBUG' }
     ]
-  }
-}
-
-// ── Role Assignments (Container App managed identity) ───────────────────────
-
-var appPrincipalId = !empty(containerImage) ? app.outputs.principalId : ''
-
-// Storage Blob Data Contributor — read/write blobs
-module roleStorage 'modules/role-assignment.bicep' = if (!empty(containerImage)) {
-  name: 'role-storage-${environmentName}'
-  params: {
-    principalId: appPrincipalId
-    roleDefinitionId: storageBlobDataContributorRole
-  }
-}
-
-// Cognitive Services User — call AI Services (CU + OpenAI)
-module roleCognitive 'modules/role-assignment.bicep' = if (!empty(containerImage)) {
-  name: 'role-cognitive-${environmentName}'
-  params: {
-    principalId: appPrincipalId
-    roleDefinitionId: cognitiveServicesUserRole
-  }
-}
-
-// Search Service Contributor — manage indexes
-module roleSearch 'modules/role-assignment.bicep' = if (!empty(containerImage)) {
-  name: 'role-search-${environmentName}'
-  params: {
-    principalId: appPrincipalId
-    roleDefinitionId: searchServiceContributorRole
-  }
-}
-
-// ACR Pull — pull images from registry
-module roleAcrPull 'modules/role-assignment.bicep' = if (!empty(containerImage)) {
-  name: 'role-acr-pull-${environmentName}'
-  params: {
-    principalId: appPrincipalId
-    roleDefinitionId: acrPullRole
   }
 }
 

@@ -15,6 +15,9 @@ param containerImage string
 @description('ACR login server (e.g., myacr.azurecr.io)')
 param acrLoginServer string
 
+@description('User-assigned managed identity resource ID (must already have AcrPull)')
+param userAssignedIdentityId string
+
 @description('Environment variables for the container')
 param envVars array = []
 
@@ -34,7 +37,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   location: location
   tags: tags
   identity: {
-    type: 'SystemAssigned'
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${userAssignedIdentityId}': {}
+    }
   }
   properties: {
     managedEnvironmentId: environmentId
@@ -49,7 +55,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       registries: [
         {
           server: acrLoginServer
-          identity: 'system'
+          identity: userAssignedIdentityId
         }
       ]
       secrets: secrets
@@ -88,4 +94,3 @@ output appId string = containerApp.id
 output appName string = containerApp.name
 output appFqdn string = containerApp.properties.configuration.ingress.fqdn
 output appUrl string = 'https://${containerApp.properties.configuration.ingress.fqdn}'
-output principalId string = containerApp.identity.principalId

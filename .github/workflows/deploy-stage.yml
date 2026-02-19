@@ -143,6 +143,12 @@ jobs:
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --yes || true
 
+      - name: Delete stage Managed Identity
+        run: |
+          az identity delete \
+            --name beme-id-stage \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} || true
+
       - name: Comment PR
         uses: actions/github-script@v7
         with:
