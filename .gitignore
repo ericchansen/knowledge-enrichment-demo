@@ -225,3 +225,4 @@ data/corpus/
 
 #Ignore insiders AI rules
 .github\instructions\codacy.instructions.md
+infra/*.json
