@@ -1,13 +1,10 @@
 // Main deployment — Knowledge Enrichment Demo
-// Deploys all infrastructure for a given environment (prod / stage)
+// Deploys the Container App for a given environment (prod / stage).
 //
-// Shared resources (deploy once):  ACR
-// Per-environment resources:       Container Apps Env, Container App,
-//                                  AI Search, Storage Account,
-//                                  User-assigned Managed Identity + RBAC
+// Managed by Bicep:   ACR (shared), Container App + CAE + MI (per-env)
+// Pre-existing:       AI Services, AI Search, Storage, Log Analytics
 //
-// Existing resources (referenced): AI Services (dev-beme-ai),
-//                                  Log Analytics (dev-beme-logs)
+// All environments share the same Search indexes and Storage corpus.
 
 targetScope = 'resourceGroup'
 
@@ -31,6 +28,12 @@ param aiServicesName string = 'dev-beme-ai'
 @description('Existing Log Analytics workspace name')
 param logAnalyticsWorkspaceName string = 'dev-beme-logs'
 
+@description('Existing AI Search service name')
+param searchServiceName string = 'dev-beme-search'
+
+@description('Existing Storage account name')
+param storageAccountName string = 'devbemestorage'
+
 @description('Embedding model deployment name')
 param embeddingDeployment string = 'text-embedding-3-small'
 
@@ -42,8 +45,6 @@ param tags object = {}
 // ── Computed Names ──────────────────────────────────────────────────────────
 
 var envSuffix = environmentName == 'prod' ? '' : '-${environmentName}'
-var searchName = 'beme-search${envSuffix}'
-var storageName = 'bemestorage${replace(environmentName, '-', '')}'
 var appEnvName = 'beme-cae${envSuffix}'
 var appName = 'beme-enrichment${envSuffix}'
 var identityName = 'beme-id${envSuffix}'
@@ -64,6 +65,14 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2023-09-01' exis
   name: logAnalyticsWorkspaceName
 }
 
+resource searchService 'Microsoft.Search/searchServices@2024-06-01-preview' existing = {
+  name: searchServiceName
+}
+
+resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+  name: storageAccountName
+}
+
 // ── Shared: ACR ─────────────────────────────────────────────────────────────
 
 module acr 'modules/acr.bicep' = {
@@ -76,7 +85,6 @@ module acr 'modules/acr.bicep' = {
 }
 
 // ── Per-Environment: User-Assigned Managed Identity ─────────────────────────
-// Created BEFORE the Container App so we can assign AcrPull first.
 
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: identityName
@@ -84,7 +92,7 @@ resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' 
   tags: union(tags, { environment: environmentName })
 }
 
-// ── Role Assignments (user-assigned MI — created before Container App) ──────
+// ── Role Assignments (user-assigned MI) ─────────────────────────────────────
 
 module roleStorage 'modules/role-assignment.bicep' = {
   name: 'role-storage-${environmentName}'
@@ -118,28 +126,6 @@ module roleAcrPull 'modules/role-assignment.bicep' = {
   }
 }
 
-// ── Per-Environment: Storage ────────────────────────────────────────────────
-
-module storage 'modules/storage.bicep' = {
-  name: 'storage-${environmentName}'
-  params: {
-    name: storageName
-    location: location
-    tags: union(tags, { environment: environmentName })
-  }
-}
-
-// ── Per-Environment: AI Search ──────────────────────────────────────────────
-
-module search 'modules/search.bicep' = {
-  name: 'search-${environmentName}'
-  params: {
-    name: searchName
-    location: location
-    tags: union(tags, { environment: environmentName })
-  }
-}
-
 // ── Per-Environment: Container Apps ─────────────────────────────────────────
 
 module appEnv 'modules/container-app-env.bicep' = {
@@ -166,18 +152,18 @@ module app 'modules/container-app.bicep' = if (!empty(containerImage)) {
     minReplicas: environmentName == 'prod' ? 1 : 0
     maxReplicas: environmentName == 'prod' ? 3 : 1
     secrets: [
-      { name: 'search-api-key', value: search.outputs.searchAdminKey }
+      { name: 'search-api-key', value: searchService.listAdminKeys().primaryKey }
       { name: 'cu-key', value: aiServices.listKeys().key1 }
     ]
     envVars: [
       { name: 'ENVIRONMENT', value: environmentName }
       { name: 'CONTENTUNDERSTANDING_ENDPOINT', value: aiServices.properties.endpoint }
       { name: 'CONTENTUNDERSTANDING_KEY', secretRef: 'cu-key' }
-      { name: 'AZURE_OPENAI_ENDPOINT', value: '${aiServices.properties.endpoint}openai/' }
+      { name: 'AZURE_OPENAI_ENDPOINT', value: aiServices.properties.endpoint }
       { name: 'AZURE_OPENAI_KEY', secretRef: 'cu-key' }
-      { name: 'SEARCH_ENDPOINT', value: search.outputs.searchEndpoint }
+      { name: 'SEARCH_ENDPOINT', value: 'https://${searchService.name}.search.windows.net' }
       { name: 'SEARCH_API_KEY', secretRef: 'search-api-key' }
-      { name: 'STORAGE_ACCOUNT_URL', value: storage.outputs.storageAccountUrl }
+      { name: 'STORAGE_ACCOUNT_URL', value: storageAccount.properties.primaryEndpoints.blob }
       { name: 'EMBEDDING_DEPLOYMENT', value: embeddingDeployment }
       { name: 'CHAT_DEPLOYMENT', value: chatDeployment }
       { name: 'SEARCH_INDEX_BASELINE', value: 'baseline-index' }
@@ -190,7 +176,5 @@ module app 'modules/container-app.bicep' = if (!empty(containerImage)) {
 // ── Outputs ─────────────────────────────────────────────────────────────────
 
 output acrLoginServer string = acr.outputs.acrLoginServer
-output storageAccountUrl string = storage.outputs.storageAccountUrl
-output searchEndpoint string = search.outputs.searchEndpoint
 output appUrl string = !empty(containerImage) ? app.outputs.appUrl : ''
 output appFqdn string = !empty(containerImage) ? app.outputs.appFqdn : ''
