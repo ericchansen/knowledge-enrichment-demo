@@ -237,3 +237,234 @@ def test_pipeline_run_unconfigured(client):
     data = response.json()
     assert data["status"] == "error"
     assert "not configured" in data["message"]
+
+
+def _make_configured_settings():
+    """Helper: return a MagicMock settings object with all services configured."""
+    settings = MagicMock()
+    settings.azure_openai_endpoint = "https://test.openai.azure.com"
+    settings.azure_openai_key = "test-key"
+    settings.search_endpoint = "https://test.search.windows.net"
+    settings.search_api_key = "test-key"
+    settings.contentunderstanding_endpoint = "https://test.services.ai.azure.com/"
+    settings.contentunderstanding_key = "test-key"
+    settings.embedding_deployment = "text-embedding-3-small"
+    settings.chat_deployment = "gpt-4o"
+    settings.search_index_baseline = "baseline-index"
+    settings.search_index_enhanced = "enhanced-index"
+    settings.azure_storage_connection_string = "UseDevelopmentStorage=true"
+    settings.storage_account_url = ""
+    settings.storage_container_corpus = "corpus"
+    settings.storage_container_results = "cu-results"
+    settings.environment = "test"
+    settings.log_level = "INFO"
+    return settings
+
+
+def test_chat_enhanced_with_service():
+    """POST /api/chat/enhanced uses ChatService when configured."""
+    with (
+        patch("enrichment.server.StorageService"),
+        patch("enrichment.server.SearchService"),
+        patch("enrichment.server.EmbeddingService"),
+        patch("enrichment.server.ChatService") as mock_chat_cls,
+        patch("enrichment.server.get_settings") as mock_settings,
+    ):
+        mock_settings.return_value = _make_configured_settings()
+        mock_chat = mock_chat_cls.return_value
+        mock_chat.chat_enhanced.return_value = {
+            "message": "Enhanced answer with metadata",
+            "citations": [
+                {"document_id": "d1", "chunk_id": "c1", "score": 0.95, "snippet": "..."}
+            ],
+            "metadata": {"report_title": "GAO-24-106583"},
+        }
+
+        app = create_app()
+        test_client = TestClient(app)
+
+        response = test_client.post(
+            "/api/chat/enhanced", json={"message": "What about cybersecurity?"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["message"] == "Enhanced answer with metadata"
+        assert data["pipeline_type"] == "enhanced"
+        assert len(data["citations"]) == 1
+
+
+def test_chat_enhanced_error_handling():
+    """POST /api/chat/enhanced returns error message when service throws."""
+    with (
+        patch("enrichment.server.StorageService"),
+        patch("enrichment.server.SearchService"),
+        patch("enrichment.server.EmbeddingService"),
+        patch("enrichment.server.ChatService") as mock_chat_cls,
+        patch("enrichment.server.get_settings") as mock_settings,
+    ):
+        mock_settings.return_value = _make_configured_settings()
+        mock_chat = mock_chat_cls.return_value
+        mock_chat.chat_enhanced.side_effect = RuntimeError("Search index not found")
+
+        app = create_app()
+        test_client = TestClient(app)
+
+        response = test_client.post("/api/chat/enhanced", json={"message": "test"})
+        assert response.status_code == 200
+        data = response.json()
+        assert "error occurred" in data["message"]
+        assert data["pipeline_type"] == "enhanced"
+
+
+def test_pipeline_run_no_openai():
+    """POST /api/pipeline/run returns error when Azure OpenAI not configured."""
+    with (
+        patch("enrichment.server.StorageService"),
+        patch("enrichment.server.get_settings") as mock_settings,
+    ):
+        settings = _make_configured_settings()
+        settings.azure_openai_endpoint = ""
+        mock_settings.return_value = settings
+
+        app = create_app()
+        test_client = TestClient(app)
+
+        response = test_client.post(
+            "/api/pipeline/run", json={"pipeline_type": "baseline"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "error"
+        assert "Azure OpenAI" in data["message"]
+
+
+def test_pipeline_run_no_documents():
+    """POST /api/pipeline/run returns error when corpus is empty."""
+    with (
+        patch("enrichment.server.StorageService") as mock_storage_cls,
+        patch("enrichment.server.ContentUnderstandingService"),
+        patch("enrichment.server.EmbeddingService"),
+        patch("enrichment.server.SearchService"),
+        patch("enrichment.server.get_settings") as mock_settings,
+    ):
+        mock_settings.return_value = _make_configured_settings()
+        mock_storage_cls.return_value.list_documents.return_value = []
+
+        app = create_app()
+        test_client = TestClient(app)
+
+        response = test_client.post(
+            "/api/pipeline/run", json={"pipeline_type": "baseline"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "error"
+        assert "No documents" in data["message"]
+
+
+def test_pipeline_run_baseline_success():
+    """POST /api/pipeline/run successfully runs the baseline pipeline."""
+    with (
+        patch("enrichment.server.StorageService") as mock_storage_cls,
+        patch("enrichment.server.ContentUnderstandingService"),
+        patch("enrichment.server.EmbeddingService"),
+        patch("enrichment.server.SearchService"),
+        patch("enrichment.server.get_settings") as mock_settings,
+        patch("enrichment.pipeline.baseline.BaselinePipeline") as mock_pipeline_cls,
+    ):
+        mock_settings.return_value = _make_configured_settings()
+        mock_storage = mock_storage_cls.return_value
+        mock_storage.list_documents.return_value = ["report1.pdf", "report2.pdf"]
+        mock_storage.get_document_sas_url.side_effect = lambda f: f"https://sas/{f}"
+
+        mock_pipeline = mock_pipeline_cls.return_value
+
+        app = create_app()
+        test_client = TestClient(app)
+
+        response = test_client.post(
+            "/api/pipeline/run", json={"pipeline_type": "baseline"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "complete"
+        assert data["documents_processed"] == 2
+        assert data["documents_total"] == 2
+        mock_pipeline.ensure_index.assert_called_once()
+        assert mock_pipeline.process_document.call_count == 2
+
+
+def test_pipeline_run_enhanced_success():
+    """POST /api/pipeline/run successfully runs the enhanced pipeline."""
+    with (
+        patch("enrichment.server.StorageService") as mock_storage_cls,
+        patch("enrichment.server.ContentUnderstandingService"),
+        patch("enrichment.server.EmbeddingService"),
+        patch("enrichment.server.SearchService"),
+        patch("enrichment.server.get_settings") as mock_settings,
+        patch("enrichment.pipeline.enhanced.EnhancedPipeline") as mock_pipeline_cls,
+    ):
+        mock_settings.return_value = _make_configured_settings()
+        mock_storage = mock_storage_cls.return_value
+        mock_storage.list_documents.return_value = ["report1.pdf"]
+        mock_storage.get_document_sas_url.return_value = "https://sas/report1.pdf"
+
+        mock_pipeline = mock_pipeline_cls.return_value
+
+        app = create_app()
+        test_client = TestClient(app)
+
+        response = test_client.post(
+            "/api/pipeline/run", json={"pipeline_type": "enhanced"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "complete"
+        assert data["documents_processed"] == 1
+        mock_pipeline.ensure_index.assert_called_once()
+        mock_pipeline.ensure_analyzer.assert_called_once()
+        mock_pipeline.process_document.assert_called_once()
+
+
+def test_pipeline_run_error_handling():
+    """POST /api/pipeline/run returns error when pipeline throws."""
+    with (
+        patch("enrichment.server.StorageService") as mock_storage_cls,
+        patch("enrichment.server.ContentUnderstandingService") as mock_cu_cls,
+        patch("enrichment.server.EmbeddingService"),
+        patch("enrichment.server.SearchService"),
+        patch("enrichment.server.get_settings") as mock_settings,
+    ):
+        mock_settings.return_value = _make_configured_settings()
+        mock_storage_cls.return_value.list_documents.return_value = ["report.pdf"]
+        mock_cu_cls.side_effect = RuntimeError("CU unavailable")
+
+        app = create_app()
+        test_client = TestClient(app)
+
+        response = test_client.post(
+            "/api/pipeline/run", json={"pipeline_type": "baseline"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "error"
+        assert "error occurred" in data["message"]
+
+
+def test_storage_init_with_account_url():
+    """StorageService should use account_url when provided in settings."""
+    with (
+        patch("enrichment.server.StorageService") as mock_storage_cls,
+        patch("enrichment.server.get_settings") as mock_settings,
+    ):
+        settings = _make_configured_settings()
+        settings.storage_account_url = "https://myaccount.blob.core.windows.net"
+        settings.azure_storage_connection_string = ""
+        mock_settings.return_value = settings
+
+        create_app()
+
+        call_kwargs = mock_storage_cls.call_args
+        assert call_kwargs.kwargs.get("account_url") or "account_url" in str(
+            call_kwargs
+        )
