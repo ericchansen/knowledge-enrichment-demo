@@ -189,7 +189,7 @@ class SearchService:
     ) -> list[dict[str, Any]]:
         """Hybrid search: keyword + vector if vector provided."""
         client = self.get_search_client(index_name)
-        vector_queries = None
+        vector_queries: list[VectorizedQuery] | None = None
         if vector:
             vector_queries = [
                 VectorizedQuery(
@@ -200,7 +200,7 @@ class SearchService:
             ]
         results = client.search(
             search_text=query,
-            vector_queries=vector_queries,
+            vector_queries=vector_queries,  # type: ignore[arg-type]  # VectorizedQuery is a VectorQuery subclass
             top=top,
         )
         hits = []

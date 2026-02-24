@@ -99,8 +99,10 @@ class StorageService:
             key_start_time=now - dt.timedelta(minutes=5),
             key_expiry_time=now + dt.timedelta(hours=expiry_hours),
         )
+        account_name = self._blob_service.account_name
+        assert account_name is not None, "account_name required for SAS generation"
         sas = generate_blob_sas(
-            account_name=self._blob_service.account_name,
+            account_name=account_name,
             container_name=self._corpus_container_name,
             blob_name=filename,
             user_delegation_key=udk,
