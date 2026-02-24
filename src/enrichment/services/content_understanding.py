@@ -7,7 +7,10 @@ import logging
 from typing import Any
 
 from azure.ai.contentunderstanding import ContentUnderstandingClient
-from azure.ai.contentunderstanding.models import AnalyzeInput, AnalyzeResult
+from azure.ai.contentunderstanding.models import (
+    AnalyzeInput,  # type: ignore[attr-defined]
+    AnalyzeResult,  # type: ignore[attr-defined]
+)
 from azure.core.credentials import AzureKeyCredential
 from azure.identity import DefaultAzureCredential
 
