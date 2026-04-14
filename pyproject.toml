@@ -38,7 +38,7 @@ packages = ["src/enrichment"]
 
 [dependency-groups]
 dev = [
-    "pytest>=8.0",
+    "pytest>=9.0.3",
     "pytest-asyncio",
     "pytest-cov",
     "ruff",
